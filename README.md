@@ -24,7 +24,7 @@ A simple yet powerful Bash script for backing up and restoring Docker applicatio
 
 ```bash
 git clone https://github.com/neuleo/docker-backup.git
-cd docker-backup-script
+cd docker-backup
 chmod +x docker-backup.sh
 ```
 
