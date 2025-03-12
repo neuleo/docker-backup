@@ -77,14 +77,10 @@ function create_backup {
     log "Copying docker-compose file to temporary directory..."
     cp "$compose_file" "$temp_dir/"
     
-    # Extract volume information from docker-compose file (Hinweis: Diese Methode ist heuristisch)
+    # Extract volume information from docker-compose file (nur benannte Volumes)
     log "Extracting volume information..."
     local volumes
-    volumes=$(docker volume ls --format "{{.Name}}" | grep -v "^$")
-    local bind_mounts
-    bind_mounts=$(grep -A 5 "volumes:" "$compose_file" | grep -v "volumes:" | grep -v "^--$" | grep -E "^\s*-\s*.*:.*" | awk '{print $2}' | awk -F':' '{print $1}' | sed 's/^-//g' | sed 's/^[[:space:]]*//g' | grep -v "^$")
-    local additional_bind_mounts
-    additional_bind_mounts=$(grep -E "volumes:" -A 100 "$compose_file" | grep -E "^\s+.*:\s*" | awk -F':' '{print $1}' | sed 's/^[[:space:]]*//g' | grep -v "^#" | grep -v "^$")
+    volumes=$(grep -E '^\s*-\s*[^./][^:]*:' "$compose_file" | sed -E 's/^\s*-\s*([^:]+):.*$/\1/' | sort -u)
     
     # Backing up Docker volumes using container-based tar method
     if [ -n "$volumes" ]; then
@@ -95,7 +91,7 @@ function create_backup {
             if [ -n "$volume" ]; then
                 log "Processing Docker volume: $volume"
                 
-                # Get volume mountpoint (nur zu Debugzwecken)
+                # Get volume mountpoint
                 local volume_path
                 volume_path=$(docker volume inspect "$volume" --format '{{ .Mountpoint }}')
                 if [ -n "$volume_path" ]; then
@@ -103,10 +99,9 @@ function create_backup {
                     local volume_name
                     volume_name=$(basename "$volume")
                     
-                    # Create destination directory for this volume backup
                     mkdir -p "$temp_dir/volumes/$volume_name"
                     
-                    # Stop containers using this volume für konsistente Backups
+                    # Stop Container(s) using dieses Volume für konsistente Backups
                     local containers
                     containers=$(docker ps -a --filter "volume=$volume" --format "{{.Names}}")
                     for container in $containers; do
@@ -114,14 +109,12 @@ function create_backup {
                         docker stop "$container" || true
                     done
                     
-                    # Backup volume using a temporary container and tar (erstellt backup.tar.gz im Zielordner)
+                    # Backup Volume per containerbasiertem tar-Befehl
                     log "  - Backing up volume data using docker container..."
                     docker run --rm -v "$volume":/data -v "$temp_dir/volumes/$volume_name":/backup alpine sh -c "tar czf /backup/backup.tar.gz -C /data ."
                     
-                    # Save original volume name info
                     echo "$volume" > "$temp_dir/volumes/$volume_name/.volume_info"
                     
-                    # Restart gestoppte Container
                     for container in $containers; do
                         log "  - Restarting container $container..."
                         docker start "$container" || true
@@ -132,6 +125,10 @@ function create_backup {
     fi
     
     # Backing up bind mounts
+    local bind_mounts
+    bind_mounts=$(grep -A 5 "volumes:" "$compose_file" | grep -v "volumes:" | grep -v "^--$" | grep -E "^\s*-\s*.*:.*" | awk '{print $2}' | awk -F':' '{print $1}' | sed 's/^-//g' | sed 's/^[[:space:]]*//g' | grep -v "^$")
+    local additional_bind_mounts
+    additional_bind_mounts=$(grep -E "volumes:" -A 100 "$compose_file" | grep -E "^\s+.*:\s*" | awk -F':' '{print $1}' | sed 's/^[[:space:]]*//g' | grep -v "^#" | grep -v "^$")
     local combined_bind_mounts
     combined_bind_mounts=$(echo -e "$bind_mounts\n$additional_bind_mounts" | sort -u | grep -v "^$")
     
@@ -142,15 +139,13 @@ function create_backup {
         while read -r mount; do
             if [ -n "$mount" ]; then
                 log "Processing bind mount: $mount"
-                # Nur lokale Pfade verarbeiten
                 if [[ "$mount" == /* || "$mount" == ./* ]]; then
                     if [[ "$mount" == ./* ]]; then
                         mount="${app_dir}/${mount:2}"
                     fi
                     
                     if [[ "$mount" == "$app_dir/"* ]]; then
-                        local rel_path
-                        rel_path="${mount#$app_dir/}"
+                        local rel_path="${mount#$app_dir/}"
                         log "  - Backing up local bind mount: $rel_path"
                         if [ -d "$mount" ]; then
                             mkdir -p "$temp_dir/bind_mounts/$rel_path"
@@ -180,11 +175,9 @@ function create_backup {
         done <<< "$combined_bind_mounts"
     fi
     
-    # Create archive from temporary backup directory
     log "Creating backup archive: $backup_file"
     tar -czf "$backup_file" -C "$app_dir" "$(basename "$temp_dir")"
     
-    # Clean up temporary directory
     log "Cleaning up temporary directory..."
     rm -rf "$temp_dir"
     
@@ -195,13 +188,11 @@ function create_backup {
 function restore_backup {
     local app_dir=$1
     
-    # Validate app directory
     if [ ! -d "$app_dir" ]; then
         log "ERROR: Directory $app_dir does not exist."
         exit 1
     fi
     
-    # Find backup archive
     local backup_files
     IFS=$'\n' read -d '' -r -a backup_files < <(find "$app_dir" -maxdepth 1 -name "*_backup_*.tar.gz" | sort -r && printf '\0')
     local backup_file=""
@@ -227,16 +218,13 @@ function restore_backup {
     
     log "Using backup file: $backup_file"
     
-    # Create temporary directory for extraction
     local temp_dir="${app_dir}/.restore_temp"
     log "Creating temporary directory: $temp_dir"
     mkdir -p "$temp_dir"
     
-    # Extract backup archive
     log "Extracting backup archive..."
     tar -xzf "$backup_file" -C "$temp_dir"
     
-    # Determine extracted directory (sollte .backup_temp heißen)
     local extracted_dir="${temp_dir}/.backup_temp"
     if [ ! -d "$extracted_dir" ]; then
         extracted_dir="${temp_dir}/$(find "$temp_dir" -maxdepth 1 -type d | grep -v "^$temp_dir\$" | head -n 1 | xargs basename)"
@@ -249,7 +237,6 @@ function restore_backup {
         fi
     fi
     
-    # Restore docker-compose file
     log "Restoring docker-compose file..."
     if [ -f "$extracted_dir/docker-compose.yaml" ]; then
         cp "$extracted_dir/docker-compose.yaml" "$app_dir/"
@@ -259,7 +246,6 @@ function restore_backup {
         log "WARNING: No docker-compose file found in backup."
     fi
     
-    # Stop running containers
     local compose_file=""
     if [ -f "$app_dir/docker-compose.yaml" ]; then
         compose_file="$app_dir/docker-compose.yaml"
@@ -274,10 +260,8 @@ function restore_backup {
         log "No containers running or docker-compose failed."
     fi
     
-    # Restore bind mounts
     if [ -d "$extracted_dir/bind_mounts" ]; then
         log "Restoring bind mounts..."
-        # Interne bind mounts
         find "$extracted_dir/bind_mounts" -mindepth 1 -type d | grep -v "/external/" | while read -r dir; do
             local rel_path="${dir#$extracted_dir/bind_mounts/}"
             local dest_path="$app_dir/$rel_path"
@@ -287,7 +271,6 @@ function restore_backup {
                 cp -rp "$dir"/* "$dest_path/"
             fi
         done
-        # Externe bind mounts
         if [ -d "$extracted_dir/bind_mounts/external" ]; then
             log "Restoring external bind mounts..."
             find "$extracted_dir/bind_mounts/external" -mindepth 1 -type d | while read -r dir; do
@@ -308,7 +291,6 @@ function restore_backup {
         fi
     fi
     
-    # Restore Docker volumes using container-based tar restore
     if [ -d "$extracted_dir/volumes" ]; then
         log "Restoring Docker volumes..."
         find "$extracted_dir/volumes" -mindepth 1 -maxdepth 1 -type d | while read -r vol_dir; do
@@ -318,12 +300,10 @@ function restore_backup {
                 local original_volume
                 original_volume=$(cat "$vol_dir/.volume_info")
                 log "  - Restoring volume $original_volume"
-                # Erstelle das Volume falls es nicht existiert
                 if ! docker volume inspect "$original_volume" &>/dev/null; then
                     log "  - Creating Docker volume: $original_volume"
                     docker volume create "$original_volume"
                 fi
-                # Nutze containerbasierten Restore: Entpacke das Archiv in das Volume
                 log "  - Restoring data into volume $original_volume..."
                 docker run --rm -v "$original_volume":/data -v "$vol_dir":/backup alpine sh -c "tar xzf /backup/backup.tar.gz -C /data"
             else
@@ -332,7 +312,6 @@ function restore_backup {
         done
     fi
     
-    # Start containers
     if [ -n "$compose_file" ]; then
         log "Starting containers..."
         (cd "$app_dir" && docker-compose up -d) || \
@@ -340,7 +319,6 @@ function restore_backup {
         log "ERROR: Failed to start containers."
     fi
     
-    # Clean up
     log "Cleaning up..."
     rm -rf "$temp_dir"
     
