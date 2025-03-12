@@ -79,7 +79,7 @@ function create_backup {
     log "Extracting volume information..."
     
     # Parse volumes and bind mounts from docker-compose file
-    local volumes=$(grep -A 5 "volumes:" "$compose_file" | grep -v "volumes:" | grep -v "^--$" | awk '{print $1}' | sed 's/://g' | grep -v "^$")
+    local volumes=$(docker volume ls --format "{{.Name}}" | grep -v "^$")
     local bind_mounts=$(grep -A 5 "volumes:" "$compose_file" | grep -v "volumes:" | grep -v "^--$" | grep -E "^\s*-\s*.*:.*" | awk '{print $2}' | awk -F':' '{print $1}' | sed 's/^-//g' | sed 's/^[[:space:]]*//g' | grep -v "^$")
     
     # Additional pattern to match bind mounts in another format
