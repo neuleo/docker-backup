@@ -41,14 +41,14 @@ function check_requirements {
 
 # Create backup function
 function create_backup {
-    app_dir=$1
+    local app_dir=$1
 
     if [ ! -d "$app_dir" ]; then
         log "ERROR: Directory $app_dir does not exist."
         exit 1
     fi
 
-    compose_file=""
+    local compose_file=""
     if [ -f "$app_dir/docker-compose.yaml" ]; then
         compose_file="$app_dir/docker-compose.yaml"
     elif [ -f "$app_dir/docker-compose.yml" ]; then
@@ -60,10 +60,10 @@ function create_backup {
 
     log "Found compose file: $compose_file"
 
-    timestamp=$(date +%Y%m%d_%H%M%S)
-    backup_name=$(basename "$app_dir")
-    backup_file="${app_dir}/${backup_name}_backup_${timestamp}.tar.gz"
-    temp_dir="${app_dir}/.backup_temp"
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local backup_name=$(basename "$app_dir")
+    local backup_file="${app_dir}/${backup_name}_backup_${timestamp}.tar.gz"
+    local temp_dir="${app_dir}/.backup_temp"
 
     log "Creating temporary directory: $temp_dir"
     mkdir -p "$temp_dir"
@@ -73,9 +73,10 @@ function create_backup {
 
     # Get project name and volumes with proper naming
     log "Extracting volume information..."
-    project_name=$(basename "$app_dir")
+    local project_name=$(basename "$app_dir")
     
     # Get volumes from docker compose config and add project prefix
+    local config_volumes=""
     if docker compose version &>/dev/null; then
         config_volumes=$(cd "$app_dir" && docker compose config --volumes 2>/dev/null || true)
     else
@@ -83,18 +84,18 @@ function create_backup {
     fi
 
     # Convert volume names to actual Docker volume names (with project prefix)
-    volumes=""
+    local volumes=""
     if [ -n "$config_volumes" ]; then
         while read -r volume; do
             [ -z "$volume" ] && continue
             # Check if volume exists with project prefix
-            full_volume_name="${project_name}_${volume}"
+            local full_volume_name="${project_name}_${volume}"
             if docker volume inspect "$full_volume_name" &>/dev/null; then
-                volumes="$volumes$full_volume_name"$'\n'
+                volumes="${volumes}${full_volume_name}\n"
             else
                 # Fallback: check if volume exists without prefix
                 if docker volume inspect "$volume" &>/dev/null; then
-                    volumes="$volumes$volume"$'\n'
+                    volumes="${volumes}${volume}\n"
                 else
                     log "WARNING: Volume $volume (tried as $full_volume_name) not found"
                 fi
@@ -106,16 +107,16 @@ function create_backup {
         log "Backing up Docker volumes..."
         mkdir -p "$temp_dir/volumes"
 
-        while read -r volume; do
+        echo -e "$volumes" | while read -r volume; do
             [ -z "$volume" ] && continue
             log "Processing Docker volume: $volume"
-            volume_path=$(docker volume inspect "$volume" --format '{{ .Mountpoint }}' 2>/dev/null)
+            local volume_path=$(docker volume inspect "$volume" --format '{{ .Mountpoint }}' 2>/dev/null)
             if [ -n "$volume_path" ]; then
                 log "  - Found volume path: $volume_path"
-                volume_name=$(basename "$volume")
+                local volume_name=$(basename "$volume")
                 mkdir -p "$temp_dir/volumes/$volume_name"
 
-                containers=$(docker ps -a --filter "volume=$volume" --format "{{.Names}}" 2>/dev/null || true)
+                local containers=$(docker ps -a --filter "volume=$volume" --format "{{.Names}}" 2>/dev/null || true)
                 for container in $containers; do
                     [ -z "$container" ] && continue
                     log "  - Stopping container $container temporarily..."
@@ -134,13 +135,13 @@ function create_backup {
             else
                 log "WARNING: Could not find volume path for $volume"
             fi
-        done <<< "$volumes"
+        done
     fi
 
-    # Bind mounts backup (unverändert)
-    bind_mounts=$(grep -A 5 "volumes:" "$compose_file" | grep -v "volumes:" | grep -v "^--$" | grep -E "^\s*-\s*.*:.*" | awk '{print $2}' | awk -F':' '{print $1}' | sed 's/^-//g' | sed 's/^[[:space:]]*//g' | grep -v "^$")
-    additional_bind_mounts=$(grep -E "volumes:" -A 100 "$compose_file" | grep -E "^\s+.*:\s*" | awk -F':' '{print $1}' | sed 's/^[[:space:]]*//g' | grep -v "^#" | grep -v "^$")
-    combined_bind_mounts=$(echo -e "$bind_mounts\n$additional_bind_mounts" | sort -u | grep -v "^$")
+    # Bind mounts backup
+    local bind_mounts=$(grep -A 5 "volumes:" "$compose_file" | grep -v "volumes:" | grep -v "^--$" | grep -E "^\s*-\s*.*:.*" | awk '{print $2}' | awk -F':' '{print $1}' | sed 's/^-//g' | sed 's/^[[:space:]]*//g' | grep -v "^$")
+    local additional_bind_mounts=$(grep -E "volumes:" -A 100 "$compose_file" | grep -E "^\s+.*:\s*" | awk -F':' '{print $1}' | sed 's/^[[:space:]]*//g' | grep -v "^#" | grep -v "^$")
+    local combined_bind_mounts=$(echo -e "$bind_mounts\n$additional_bind_mounts" | sort -u | grep -v "^$")
 
     if [ -n "$combined_bind_mounts" ]; then
         log "Backing up bind mounts..."
@@ -156,7 +157,7 @@ function create_backup {
                 fi
 
                 if [[ "$mount" == "$app_dir/"* ]]; then
-                    rel_path="${mount#$app_dir/}"
+                    local rel_path="${mount#$app_dir/}"
                     log "  - Backing up local bind mount: $rel_path"
                     if [ -d "$mount" ]; then
                         mkdir -p "$temp_dir/bind_mounts/$rel_path"
@@ -167,7 +168,7 @@ function create_backup {
                     fi
                 else
                     log "  - External bind mount detected: $mount"
-                    mount_name=$(echo "$mount" | sed 's|/|_|g' | sed 's|^_||')
+                    local mount_name=$(echo "$mount" | sed 's|/|_|g' | sed 's|^_||')
                     mkdir -p "$temp_dir/bind_mounts/external/$mount_name"
                     if [ -d "$mount" ]; then
                         cp -rp "$mount"/* "$temp_dir/bind_mounts/external/$mount_name/" || log "WARNING: Could not copy all files from $mount."
@@ -191,15 +192,16 @@ function create_backup {
 
 # Restore backup function
 function restore_backup {
-    app_dir=$1
+    local app_dir=$1
 
     if [ ! -d "$app_dir" ]; then
         log "ERROR: Directory $app_dir does not exist."
         exit 1
     fi
 
+    local backup_files
     IFS=$'\n' read -d '' -r -a backup_files < <(find "$app_dir" -maxdepth 1 -name "*_backup_*.tar.gz" | sort -r && printf '\0')
-    backup_file=""
+    local backup_file=""
 
     if [ ${#backup_files[@]} -eq 0 ]; then
         log "ERROR: No backup files found in $app_dir."
@@ -222,14 +224,14 @@ function restore_backup {
 
     log "Using backup file: $backup_file"
 
-    temp_dir="${app_dir}/.restore_temp"
+    local temp_dir="${app_dir}/.restore_temp"
     log "Creating temporary directory: $temp_dir"
     mkdir -p "$temp_dir"
 
     log "Extracting backup archive..."
     tar -xzf "$backup_file" -C "$temp_dir"
 
-    extracted_dir="${temp_dir}/.backup_temp"
+    local extracted_dir="${temp_dir}/.backup_temp"
     if [ ! -d "$extracted_dir" ]; then
         extracted_dir="${temp_dir}/$(find "$temp_dir" -maxdepth 1 -type d | grep -v "^$temp_dir\$" | head -n 1 | xargs basename)"
         if [ ! -d "$temp_dir/$extracted_dir" ]; then
@@ -250,7 +252,7 @@ function restore_backup {
         log "WARNING: No docker-compose file found in backup."
     fi
 
-    compose_file=""
+    local compose_file=""
     if [ -f "$app_dir/docker-compose.yaml" ]; then
         compose_file="$app_dir/docker-compose.yaml"
     elif [ -f "$app_dir/docker-compose.yml" ]; then
@@ -267,8 +269,8 @@ function restore_backup {
     if [ -d "$extracted_dir/bind_mounts" ]; then
         log "Restoring bind mounts..."
         find "$extracted_dir/bind_mounts" -mindepth 1 -type d | grep -v "/external/" | while read -r dir; do
-            rel_path="${dir#$extracted_dir/bind_mounts/}"
-            dest_path="$app_dir/$rel_path"
+            local rel_path="${dir#$extracted_dir/bind_mounts/}"
+            local dest_path="$app_dir/$rel_path"
             log "  - Restoring $rel_path to $dest_path"
             mkdir -p "$dest_path"
             if [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
@@ -279,9 +281,9 @@ function restore_backup {
         if [ -d "$extracted_dir/bind_mounts/external" ]; then
             log "Restoring external bind mounts..."
             find "$extracted_dir/bind_mounts/external" -mindepth 1 -type d | while read -r dir; do
-                mount_name=$(basename "$dir")
+                local mount_name=$(basename "$dir")
                 if [ -f "$dir/.mount_info" ]; then
-                    original_path=$(cat "$dir/.mount_info")
+                    local original_path=$(cat "$dir/.mount_info")
                     log "  - Restoring external mount $mount_name to $original_path"
                     mkdir -p "$(dirname "$original_path")"
                     if [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
@@ -297,9 +299,9 @@ function restore_backup {
     if [ -d "$extracted_dir/volumes" ]; then
         log "Restoring Docker volumes..."
         find "$extracted_dir/volumes" -mindepth 1 -maxdepth 1 -type d | while read -r vol_dir; do
-            vol_name=$(basename "$vol_dir")
+            local vol_name=$(basename "$vol_dir")
             if [ -f "$vol_dir/.volume_info" ]; then
-                original_volume=$(cat "$vol_dir/.volume_info")
+                local original_volume=$(cat "$vol_dir/.volume_info")
                 log "  - Restoring volume $original_volume"
                 if ! docker volume inspect "$original_volume" &>/dev/null; then
                     log "  - Creating Docker volume: $original_volume"
