@@ -71,11 +71,9 @@ function create_backup {
     log "Copying docker-compose file to temporary directory..."
     cp "$compose_file" "$temp_dir/"
 
-    # Get project name and volumes with proper naming
     log "Extracting volume information..."
     local project_name=$(basename "$app_dir")
     
-    # Get volumes from docker compose config and add project prefix
     local config_volumes=""
     if docker compose version &>/dev/null; then
         config_volumes=$(cd "$app_dir" && docker compose config --volumes 2>/dev/null || true)
@@ -83,19 +81,24 @@ function create_backup {
         config_volumes=$(cd "$app_dir" && docker-compose config --volumes 2>/dev/null || true)
     fi
 
-    # Convert volume names to actual Docker volume names (with project prefix)
     local volumes=""
     if [ -n "$config_volumes" ]; then
         while read -r volume; do
             [ -z "$volume" ] && continue
-            # Check if volume exists with project prefix
             local full_volume_name="${project_name}_${volume}"
             if docker volume inspect "$full_volume_name" &>/dev/null; then
-                volumes="${volumes}${full_volume_name}\n"
+                if [ -z "$volumes" ]; then
+                    volumes="$full_volume_name"
+                else
+                    volumes="$volumes"$'\n'"$full_volume_name"
+                fi
             else
-                # Fallback: check if volume exists without prefix
                 if docker volume inspect "$volume" &>/dev/null; then
-                    volumes="${volumes}${volume}\n"
+                    if [ -z "$volumes" ]; then
+                        volumes="$volume"
+                    else
+                        volumes="$volumes"$'\n'"$volume"
+                    fi
                 else
                     log "WARNING: Volume $volume (tried as $full_volume_name) not found"
                 fi
@@ -107,7 +110,7 @@ function create_backup {
         log "Backing up Docker volumes..."
         mkdir -p "$temp_dir/volumes"
 
-        echo -e "$volumes" | while read -r volume; do
+        while read -r volume; do
             [ -z "$volume" ] && continue
             log "Processing Docker volume: $volume"
             local volume_path=$(docker volume inspect "$volume" --format '{{ .Mountpoint }}' 2>/dev/null)
@@ -135,10 +138,9 @@ function create_backup {
             else
                 log "WARNING: Could not find volume path for $volume"
             fi
-        done
+        done <<< "$volumes"
     fi
 
-    # Bind mounts backup
     local bind_mounts=$(grep -A 5 "volumes:" "$compose_file" | grep -v "volumes:" | grep -v "^--$" | grep -E "^\s*-\s*.*:.*" | awk '{print $2}' | awk -F':' '{print $1}' | sed 's/^-//g' | sed 's/^[[:space:]]*//g' | grep -v "^$")
     local additional_bind_mounts=$(grep -E "volumes:" -A 100 "$compose_file" | grep -E "^\s+.*:\s*" | awk -F':' '{print $1}' | sed 's/^[[:space:]]*//g' | grep -v "^#" | grep -v "^$")
     local combined_bind_mounts=$(echo -e "$bind_mounts\n$additional_bind_mounts" | sort -u | grep -v "^$")
@@ -190,7 +192,6 @@ function create_backup {
     log "Backup completed successfully: $backup_file"
 }
 
-# Restore backup function
 function restore_backup {
     local app_dir=$1
 
@@ -328,7 +329,6 @@ function restore_backup {
     log "Restore completed successfully!"
 }
 
-# Main
 check_requirements
 
 if [ $# -lt 2 ]; then
