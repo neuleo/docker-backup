@@ -71,14 +71,36 @@ function create_backup {
     log "Copying docker-compose file to temporary directory..."
     cp "$compose_file" "$temp_dir/"
 
-    # Extract only project-related volumes using docker-compose config
+    # Get project name and volumes with proper naming
     log "Extracting volume information..."
+    project_name=$(basename "$app_dir")
+    
+    # Get volumes from docker compose config and add project prefix
     if docker compose version &>/dev/null; then
-        volumes=$(docker compose -f "$compose_file" config --volumes | awk '{print $1}')
+        config_volumes=$(cd "$app_dir" && docker compose config --volumes 2>/dev/null || true)
     else
-        volumes=$(docker-compose -f "$compose_file" config --volumes | awk '{print $1}')
+        config_volumes=$(cd "$app_dir" && docker-compose config --volumes 2>/dev/null || true)
     fi
 
+    # Convert volume names to actual Docker volume names (with project prefix)
+    volumes=""
+    if [ -n "$config_volumes" ]; then
+        while read -r volume; do
+            [ -z "$volume" ] && continue
+            # Check if volume exists with project prefix
+            full_volume_name="${project_name}_${volume}"
+            if docker volume inspect "$full_volume_name" &>/dev/null; then
+                volumes="$volumes$full_volume_name"$'\n'
+            else
+                # Fallback: check if volume exists without prefix
+                if docker volume inspect "$volume" &>/dev/null; then
+                    volumes="$volumes$volume"$'\n'
+                else
+                    log "WARNING: Volume $volume (tried as $full_volume_name) not found"
+                fi
+            fi
+        done <<< "$config_volumes"
+    fi
 
     if [ -n "$volumes" ]; then
         log "Backing up Docker volumes..."
@@ -87,25 +109,30 @@ function create_backup {
         while read -r volume; do
             [ -z "$volume" ] && continue
             log "Processing Docker volume: $volume"
-            volume_path=$(docker volume inspect "$volume" --format '{{ .Mountpoint }}')
+            volume_path=$(docker volume inspect "$volume" --format '{{ .Mountpoint }}' 2>/dev/null)
             if [ -n "$volume_path" ]; then
                 log "  - Found volume path: $volume_path"
                 volume_name=$(basename "$volume")
                 mkdir -p "$temp_dir/volumes/$volume_name"
 
-                containers=$(docker ps -a --filter "volume=$volume" --format "{{.Names}}")
+                containers=$(docker ps -a --filter "volume=$volume" --format "{{.Names}}" 2>/dev/null || true)
                 for container in $containers; do
+                    [ -z "$container" ] && continue
                     log "  - Stopping container $container temporarily..."
                     docker stop "$container" || true
                 done
 
+                log "  - Backing up volume data using docker container..."
                 docker run --rm -v "$volume":/data -v "$temp_dir/volumes/$volume_name":/backup alpine sh -c "tar czf /backup/backup.tar.gz -C /data ."
                 echo "$volume" > "$temp_dir/volumes/$volume_name/.volume_info"
 
                 for container in $containers; do
+                    [ -z "$container" ] && continue
                     log "  - Restarting container $container..."
                     docker start "$container" || true
                 done
+            else
+                log "WARNING: Could not find volume path for $volume"
             fi
         done <<< "$volumes"
     fi
@@ -162,7 +189,7 @@ function create_backup {
     log "Backup completed successfully: $backup_file"
 }
 
-# Restore backup function (unverändert außer entfernten locals)
+# Restore backup function
 function restore_backup {
     app_dir=$1
 
