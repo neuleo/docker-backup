@@ -71,13 +71,14 @@ function create_backup {
     log "Copying docker-compose file to temporary directory..."
     cp "$compose_file" "$temp_dir/"
 
-    # Extract only project-related volumes using docker compose config
+    # Extract only project-related volumes using docker-compose config
     log "Extracting volume information..."
     if docker compose version &>/dev/null; then
-        volumes=$(docker compose -f "$compose_file" config --volumes)
+        volumes=$(docker compose -f "$compose_file" config --volumes | awk '{print $1}')
     else
-        volumes=$(docker-compose -f "$compose_file" config --volumes)
+        volumes=$(docker-compose -f "$compose_file" config --volumes | awk '{print $1}')
     fi
+
 
     if [ -n "$volumes" ]; then
         log "Backing up Docker volumes..."
