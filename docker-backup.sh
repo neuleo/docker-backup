@@ -63,7 +63,7 @@ function create_backup {
     local timestamp=$(date +%Y%m%d_%H%M%S)
     local backup_name=$(basename "$app_dir")
     local backup_file="${app_dir}/${backup_name}_backup_${timestamp}.tar.gz"
-    local temp_dir="${app_dir}/.backup_temp"
+    local temp_dir=$(mktemp -d "${app_dir}/.backup_temp_XXXXXX")
 
     log "Creating temporary directory: $temp_dir"
     mkdir -p "$temp_dir"
@@ -76,9 +76,9 @@ function create_backup {
     
     local config_volumes=""
     if docker compose version &>/dev/null; then
-        config_volumes=$(cd "$app_dir" && docker compose config --volumes 2>/dev/null || true)
+        config_volumes=$(cd "$app_dir" && $COMPOSE_CMD config --volumes 2>/dev/null || true)
     else
-        config_volumes=$(cd "$app_dir" && docker-compose config --volumes 2>/dev/null || true)
+        config_volumes=$(cd "$app_dir" && $COMPOSE_CMD config --volumes 2>/dev/null || true)
     fi
 
     local volumes=""
@@ -119,11 +119,10 @@ function create_backup {
                 local volume_name=$(basename "$volume")
                 mkdir -p "$temp_dir/volumes/$volume_name"
 
-                local containers=$(docker ps -a --filter "volume=$volume" --format "{{.Names}}" 2>/dev/null || true)
-                for container in $containers; do
+                docker ps -a --filter "volume=$volume" --format "{{.Names}}" 2>/dev/null | while read -r container; do
                     [ -z "$container" ] && continue
                     log "  - Stopping container $container temporarily..."
-                    docker stop "$container" || true
+                    docker stop "$container"
                 done
 
                 log "  - Backing up volume data using docker container..."
@@ -225,7 +224,7 @@ function restore_backup {
 
     log "Using backup file: $backup_file"
 
-    local temp_dir="${app_dir}/.restore_temp"
+    local temp_dir=$(mktemp -d "${app_dir}/.restore_temp_XXXXXX")
     log "Creating temporary directory: $temp_dir"
     mkdir -p "$temp_dir"
 
@@ -262,8 +261,8 @@ function restore_backup {
 
     if [ -n "$compose_file" ]; then
         log "Stopping existing containers if running..."
-        (cd "$app_dir" && docker-compose down 2>/dev/null) || \
-        (cd "$app_dir" && docker compose down 2>/dev/null) || \
+        (cd "$app_dir" && $COMPOSE_CMD down 2>/dev/null) || \
+        (cd "$app_dir" && $COMPOSE_CMD down 2>/dev/null) || \
         log "No containers running or docker-compose failed."
     fi
 
@@ -318,8 +317,8 @@ function restore_backup {
 
     if [ -n "$compose_file" ]; then
         log "Starting containers..."
-        (cd "$app_dir" && docker-compose up -d) || \
-        (cd "$app_dir" && docker compose up -d) || \
+        (cd "$app_dir" && $COMPOSE_CMD up -d) || \
+        (cd "$app_dir" && $COMPOSE_CMD up -d) || \
         log "ERROR: Failed to start containers."
     fi
 
@@ -330,6 +329,11 @@ function restore_backup {
 }
 
 check_requirements
+
+COMPOSE_CMD="docker-compose"
+if docker compose version &> /dev/null; then
+    COMPOSE_CMD="docker compose"
+fi
 
 if [ $# -lt 2 ]; then
     show_help
