@@ -169,15 +169,7 @@ function create_backup {
                         cp -p "$mount" "$temp_dir/bind_mounts/$rel_path"
                     fi
                 else
-                    log "  - External bind mount detected: $mount"
-                    local mount_name=$(echo "$mount" | sed 's|/|_|g' | sed 's|^_||')
-                    mkdir -p "$temp_dir/bind_mounts/external/$mount_name"
-                    if [ -d "$mount" ]; then
-                        cp -rp "$mount"/* "$temp_dir/bind_mounts/external/$mount_name/" || log "WARNING: Could not copy all files from $mount."
-                    elif [ -f "$mount" ]; then
-                        cp -p "$mount" "$temp_dir/bind_mounts/external/$mount_name/"
-                    fi
-                    echo "$mount" > "$temp_dir/bind_mounts/external/$mount_name/.mount_info"
+                    log "  - WARNING: External bind mount '$mount' is outside of the application directory and will not be backed up."
                 fi
             fi
         done <<< "$combined_bind_mounts"
