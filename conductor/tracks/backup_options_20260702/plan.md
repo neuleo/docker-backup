@@ -5,8 +5,8 @@
 - [x] Task: Refactor argument parsing in `docker-backup.sh` to extract `-l` (for backup) and `-d` (for restore) flags, supporting them in any argument order before directory paths. (9f6f049)
 
 ## Phase 2: Implementation of `-l` Backup Flag
-- [ ] Task: Modify `create_backup` function to accept an optional flag or destination path parameter indicating whether the target output folder is the parent directory.
-- [ ] Task: Verify that when `-l` is provided, the backup archive is written to the parent folder of the specified application directory.
+- [x] Task: Modify `create_backup` function to accept an optional flag or destination path parameter indicating whether the target output folder is the parent directory. (8877e60)
+- [x] Task: Verify that when `-l` is provided, the backup archive is written to the parent folder of the specified application directory. (8877e60)
 
 ## Phase 3: Implementation of Automatic Subfolder Restore and `-d` Restore Flag
 - [ ] Task: Modify restore logic to recognize if it is being run on a backup file directly or scanning a directory. If backups are found directly in the target directory (e.g. `/mnt/docker`), determine target app names from file prefixes (e.g. `<app_name>_backup_<timestamp>.tar.gz`).
