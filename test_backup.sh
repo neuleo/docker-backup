@@ -24,5 +24,22 @@ function test_help_contains_options {
     echo "PASS: Help contains documentation for -l and -d options"
 }
 
-# Run the test
+function test_arg_parsing {
+    echo "Running test: test_arg_parsing"
+    local output
+    # Run the script with -backup -l /nonexistent_dir.
+    # It should not complain about directory '-l'.
+    output=$(./docker-backup.sh -backup -l /nonexistent_dir 2>&1 || true)
+    
+    if echo "$output" | grep -q "Directory -l does not exist"; then
+        echo "FAIL: Option -l was treated as directory name instead of a flag"
+        exit 1
+    fi
+    
+    echo "PASS: Option -l was successfully parsed as a flag"
+}
+
+# Run the tests
 test_help_contains_options
+test_arg_parsing
+

@@ -337,9 +337,39 @@ fi
 action=$1
 shift
 
+backup_parent=false
+delete_backup=false
+dirs=()
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -l)
+            backup_parent=true
+            shift
+            ;;
+        -d)
+            delete_backup=true
+            shift
+            ;;
+        -*)
+            log "ERROR: Unknown option $1"
+            show_help
+            ;;
+        *)
+            dirs+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [ ${#dirs[@]} -eq 0 ]; then
+    log "ERROR: No directories specified."
+    show_help
+fi
+
 case "$action" in
     -backup)
-        for dir in "$@"; do
+        for dir in "${dirs[@]}"; do
             # Remove trailing slash for consistency
             dir="${dir%/}"
             if [ ! -d "$dir" ]; then
@@ -367,7 +397,7 @@ case "$action" in
         done
         ;;
     -restore)
-        for dir in "$@"; do
+        for dir in "${dirs[@]}"; do
             dir="${dir%/}"
             if [ ! -d "$dir" ]; then
                 log "ERROR: Directory $dir does not exist."
