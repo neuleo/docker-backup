@@ -4,7 +4,7 @@
 - [x] Task: Update help display to document the new `-l` option for backup and `-d` option for restore. (3699b00)
 - [x] Task: Refactor argument parsing in `docker-backup.sh` to extract `-l` (for backup) and `-d` (for restore) flags, supporting them in any argument order before directory paths. (9f6f049)
 
-## Phase 2: Implementation of `-l` Backup Flag
+## Phase 2: Implementation of `-l` Backup Flag [checkpoint: 878e5ea]
 - [x] Task: Modify `create_backup` function to accept an optional flag or destination path parameter indicating whether the target output folder is the parent directory. (8877e60)
 - [x] Task: Verify that when `-l` is provided, the backup archive is written to the parent folder of the specified application directory. (8877e60)
 
