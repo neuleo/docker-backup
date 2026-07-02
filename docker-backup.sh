@@ -69,7 +69,12 @@ function create_backup {
 
     local timestamp=$(date +%Y%m%d_%H%M%S)
     local backup_name=$(basename "$app_dir")
-    local backup_file="${app_dir}/${backup_name}_backup_${timestamp}.tar.gz"
+    local target_dir="$app_dir"
+    local dest_parent=${2:-$backup_parent}
+    if [ "$dest_parent" = "true" ]; then
+        target_dir=$(dirname "$app_dir")
+    fi
+    local backup_file="${target_dir}/${backup_name}_backup_${timestamp}.tar.gz"
     local temp_dir="${app_dir}/.backup_temp"
 
     log "Creating temporary directory: $temp_dir"
