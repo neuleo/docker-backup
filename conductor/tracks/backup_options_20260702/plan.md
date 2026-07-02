@@ -15,4 +15,4 @@
 
 ## Phase 4: Verification and Testing
 - [x] Task: Write automated test cases checking backup with `-l`, restore with automatic directory creation, and restore with `-d`. (5fbeb2b)
-- [~] Task: Conductor - User Manual Verification 'Backup Level & Restore Improvements' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Backup Level & Restore Improvements' (Protocol in workflow.md) (46a8aad)
