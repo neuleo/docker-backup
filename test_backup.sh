@@ -83,6 +83,9 @@ function test_backup_parent_flag {
 function test_restore_subfolder_and_cleanup {
     echo "Running test: test_restore_subfolder_and_cleanup"
     
+    # Clean up from potential previous runs
+    rm -rf app1 temp_restore_parent
+    
     # Set up dummy app directory
     local app_dir="app1"
     mkdir -p "$app_dir"
