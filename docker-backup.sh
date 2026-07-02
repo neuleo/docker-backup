@@ -8,11 +8,18 @@ set -e
 # Display help function
 function show_help {
     echo "Docker Backup and Restore Script"
-    echo "Usage: $0 -backup|-restore <docker_app_directory>"
+    echo "Usage: $0 -backup [-l] <docker_app_directory1> [docker_app_directory2 ...]"
+    echo "       $0 -restore [-d] <docker_app_directory1> [docker_app_directory2 ...]"
     echo ""
     echo "Options:"
-    echo "  -backup    Create a backup of the specified Docker application directory"
-    echo "  -restore   Restore a backup to the specified Docker application directory"
+    echo "  -backup    Create a backup of the specified Docker application directory/directories."
+    echo "             If a directory does not contain a compose file but has subdirectories with one,"
+    echo "             all those subdirectories will be backed up."
+    echo "  -restore   Restore a backup to the specified Docker application directory/directories."
+    echo "             If a directory does not contain a backup archive but has subdirectories with one,"
+    echo "             those subdirectories will be restored."
+    echo "  -l         Create backup archive one level up (in the parent directory) of the docker app directory."
+    echo "  -d         Delete the backup archive after a successful restore."
     echo ""
     exit 1
 }
@@ -328,14 +335,68 @@ if [ $# -lt 2 ]; then
 fi
 
 action=$1
-app_dir=$2
+shift
 
 case "$action" in
     -backup)
-        create_backup "$app_dir"
+        for dir in "$@"; do
+            # Remove trailing slash for consistency
+            dir="${dir%/}"
+            if [ ! -d "$dir" ]; then
+                log "ERROR: Directory $dir does not exist."
+                continue
+            fi
+
+            if [ -f "$dir/docker-compose.yaml" ] || [ -f "$dir/docker-compose.yml" ]; then
+                create_backup "$dir"
+            else
+                log "No docker-compose file found directly in $dir. Checking direct subdirectories..."
+                local found_subdirs=false
+                # Using find to handle hidden directories or spaces carefully, or a simple loop if files are standard
+                for subdir in "$dir"/*; do
+                    if [ -d "$subdir" ] && { [ -f "$subdir/docker-compose.yaml" ] || [ -f "$subdir/docker-compose.yml" ]; }; then
+                        log "Found Docker application in subdirectory: $subdir"
+                        create_backup "$subdir"
+                        found_subdirs=true
+                    fi
+                done
+                if [ "$found_subdirs" = false ]; then
+                    log "WARNING: No docker-compose.yaml or docker-compose.yml found in $dir or its direct subdirectories."
+                fi
+            fi
+        done
         ;;
     -restore)
-        restore_backup "$app_dir"
+        for dir in "$@"; do
+            dir="${dir%/}"
+            if [ ! -d "$dir" ]; then
+                log "ERROR: Directory $dir does not exist."
+                continue
+            fi
+
+            # Check if this directory contains a backup file or has subdirectories with backup files
+            local has_backups=false
+            if [ -n "$(find "$dir" -maxdepth 1 -name "*_backup_*.tar.gz" 2>/dev/null)" ]; then
+                has_backups=true
+            fi
+
+            if [ "$has_backups" = true ]; then
+                restore_backup "$dir"
+            else
+                log "No backup files found directly in $dir. Checking direct subdirectories..."
+                local found_subdirs=false
+                for subdir in "$dir"/*; do
+                    if [ -d "$subdir" ] && [ -n "$(find "$subdir" -maxdepth 1 -name "*_backup_*.tar.gz" 2>/dev/null)" ]; then
+                        log "Found backups in subdirectory: $subdir"
+                        restore_backup "$subdir"
+                        found_subdirs=true
+                    fi
+                done
+                if [ "$found_subdirs" = false ]; then
+                    log "WARNING: No backups found in $dir or its direct subdirectories."
+                fi
+            fi
+        done
         ;;
     *)
         show_help
