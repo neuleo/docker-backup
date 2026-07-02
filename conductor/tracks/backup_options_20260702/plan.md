@@ -1,7 +1,7 @@
 # Plan: Backup Level Options and Automated Restore Setup
 
 ## Phase 1: Preparation & Argument Parsing
-- [ ] Task: Update help display to document the new `-l` option for backup and `-d` option for restore.
+- [x] Task: Update help display to document the new `-l` option for backup and `-d` option for restore. (3699b00)
 - [ ] Task: Refactor argument parsing in `docker-backup.sh` to extract `-l` (for backup) and `-d` (for restore) flags, supporting them in any argument order before directory paths.
 
 ## Phase 2: Implementation of `-l` Backup Flag
