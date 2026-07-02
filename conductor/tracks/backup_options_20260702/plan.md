@@ -13,6 +13,6 @@
 - [x] Task: For each backup file, create the corresponding subfolder (e.g., `/mnt/docker/<app_name>/`), move/reference the backup file, and run the restore process inside that subfolder. (3d2e8bf)
 - [x] Task: Implement `-d` option to delete the successfully restored `.tar.gz` file at the end of `restore_backup`. (3d2e8bf)
 
-## Phase 4: Verification and Testing
+## Phase 4: Verification and Testing [checkpoint: a520d89]
 - [x] Task: Write automated test cases checking backup with `-l`, restore with automatic directory creation, and restore with `-d`. (5fbeb2b)
 - [x] Task: Conductor - User Manual Verification 'Backup Level & Restore Improvements' (Protocol in workflow.md) (46a8aad)
