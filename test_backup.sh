@@ -129,11 +129,13 @@ function test_restore_subfolder_and_cleanup {
     # Verify the backup archive was deleted from the parent directory due to -d flag
     if [ -f "$parent_dir/$backup_name" ]; then
         echo "FAIL: Backup file $parent_dir/$backup_name was not deleted after successful restore with -d flag"
+        (cd "$parent_dir/app1" && docker compose down 2>/dev/null || true)
         rm -rf "$parent_dir"
         exit 1
     fi
     
     # Clean up
+    (cd "$parent_dir/app1" && docker compose down 2>/dev/null || true)
     rm -rf "$parent_dir"
     echo "PASS: Restore subfolder was automatically created, and backup file was deleted successfully"
 }
