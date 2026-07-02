@@ -2,7 +2,7 @@
 
 ## Phase 1: Preparation & Argument Parsing
 - [x] Task: Update help display to document the new `-l` option for backup and `-d` option for restore. (3699b00)
-- [ ] Task: Refactor argument parsing in `docker-backup.sh` to extract `-l` (for backup) and `-d` (for restore) flags, supporting them in any argument order before directory paths.
+- [x] Task: Refactor argument parsing in `docker-backup.sh` to extract `-l` (for backup) and `-d` (for restore) flags, supporting them in any argument order before directory paths. (9f6f049)
 
 ## Phase 2: Implementation of `-l` Backup Flag
 - [ ] Task: Modify `create_backup` function to accept an optional flag or destination path parameter indicating whether the target output folder is the parent directory.
