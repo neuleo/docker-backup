@@ -80,9 +80,66 @@ function test_backup_parent_flag {
     echo "PASS: Backup file was successfully created in the parent directory"
 }
 
+function test_restore_subfolder_and_cleanup {
+    echo "Running test: test_restore_subfolder_and_cleanup"
+    
+    # Set up dummy app directory
+    local app_dir="app1"
+    mkdir -p "$app_dir"
+    echo -e "version: '3'\nservices:\n  web:\n    image: nginx:alpine" > "$app_dir/docker-compose.yml"
+    
+    # Create the backup inside app1
+    ./docker-backup.sh -backup "$app_dir"
+    
+    # Create a parent directory and move the backup file there
+    local parent_dir="temp_restore_parent"
+    mkdir -p "$parent_dir"
+    
+    local backup_file
+    backup_file=$(find "$app_dir" -name "app1_backup_*.tar.gz" | head -n 1)
+    
+    local backup_name
+    backup_name=$(basename "$backup_file")
+    
+    mv "$backup_file" "$parent_dir/"
+    
+    # Remove the original app directory
+    rm -rf "$app_dir"
+    
+    # Run restore on the parent directory with -d flag
+    ./docker-backup.sh -restore -d "$parent_dir"
+    
+    # Verify app1 directory was automatically created inside parent_dir
+    if [ ! -d "$parent_dir/app1" ]; then
+        echo "FAIL: Directory $parent_dir/app1 was not automatically created during restore"
+        rm -rf "$parent_dir"
+        exit 1
+    fi
+    
+    # Verify compose file was restored inside the new directory
+    if [ ! -f "$parent_dir/app1/docker-compose.yml" ] && [ ! -f "$parent_dir/app1/docker-compose.yaml" ]; then
+        echo "FAIL: docker-compose file was not restored in $parent_dir/app1/"
+        rm -rf "$parent_dir"
+        exit 1
+    fi
+    
+    # Verify the backup archive was deleted from the parent directory due to -d flag
+    if [ -f "$parent_dir/$backup_name" ]; then
+        echo "FAIL: Backup file $parent_dir/$backup_name was not deleted after successful restore with -d flag"
+        rm -rf "$parent_dir"
+        exit 1
+    fi
+    
+    # Clean up
+    rm -rf "$parent_dir"
+    echo "PASS: Restore subfolder was automatically created, and backup file was deleted successfully"
+}
+
 # Run the tests
 test_help_contains_options
 test_arg_parsing
 test_backup_parent_flag
+test_restore_subfolder_and_cleanup
+
 
 

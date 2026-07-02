@@ -229,7 +229,20 @@ function restore_backup {
 
     log "Using backup file: $backup_file"
 
-    local temp_dir="${app_dir}/.restore_temp"
+    local filename=$(basename "$backup_file")
+    local app_name=""
+    if [[ "$filename" =~ ^(.*)_backup_[0-9]{8}_[0-9]{6}\.tar\.gz$ ]]; then
+        app_name="${BASH_REMATCH[1]}"
+    fi
+
+    local target_restore_dir="$app_dir"
+    if [ -n "$app_name" ] && [ "$app_name" != "$(basename "$app_dir")" ]; then
+        target_restore_dir="${app_dir}/${app_name}"
+        log "Automatically creating subfolder: $target_restore_dir"
+        mkdir -p "$target_restore_dir"
+    fi
+
+    local temp_dir="${target_restore_dir}/.restore_temp"
     log "Creating temporary directory: $temp_dir"
     mkdir -p "$temp_dir"
 
@@ -250,24 +263,24 @@ function restore_backup {
 
     log "Restoring docker-compose file..."
     if [ -f "$extracted_dir/docker-compose.yaml" ]; then
-        cp "$extracted_dir/docker-compose.yaml" "$app_dir/"
+        cp "$extracted_dir/docker-compose.yaml" "$target_restore_dir/"
     elif [ -f "$extracted_dir/docker-compose.yml" ]; then
-        cp "$extracted_dir/docker-compose.yml" "$app_dir/"
+        cp "$extracted_dir/docker-compose.yml" "$target_restore_dir/"
     else
         log "WARNING: No docker-compose file found in backup."
     fi
 
     local compose_file=""
-    if [ -f "$app_dir/docker-compose.yaml" ]; then
-        compose_file="$app_dir/docker-compose.yaml"
-    elif [ -f "$app_dir/docker-compose.yml" ]; then
-        compose_file="$app_dir/docker-compose.yml"
+    if [ -f "$target_restore_dir/docker-compose.yaml" ]; then
+        compose_file="$target_restore_dir/docker-compose.yaml"
+    elif [ -f "$target_restore_dir/docker-compose.yml" ]; then
+        compose_file="$target_restore_dir/docker-compose.yml"
     fi
 
     if [ -n "$compose_file" ]; then
         log "Stopping existing containers if running..."
-        (cd "$app_dir" && docker-compose down 2>/dev/null) || \
-        (cd "$app_dir" && docker compose down 2>/dev/null) || \
+        (cd "$target_restore_dir" && docker-compose down 2>/dev/null) || \
+        (cd "$target_restore_dir" && docker compose down 2>/dev/null) || \
         log "No containers running or docker-compose failed."
     fi
 
@@ -275,7 +288,7 @@ function restore_backup {
         log "Restoring bind mounts..."
         find "$extracted_dir/bind_mounts" -mindepth 1 -type d | grep -v "/external/" | while read -r dir; do
             local rel_path="${dir#$extracted_dir/bind_mounts/}"
-            local dest_path="$app_dir/$rel_path"
+            local dest_path="$target_restore_dir/$rel_path"
             log "  - Restoring $rel_path to $dest_path"
             mkdir -p "$dest_path"
             if [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
@@ -322,13 +335,18 @@ function restore_backup {
 
     if [ -n "$compose_file" ]; then
         log "Starting containers..."
-        (cd "$app_dir" && docker-compose up -d) || \
-        (cd "$app_dir" && docker compose up -d) || \
+        (cd "$target_restore_dir" && docker-compose up -d) || \
+        (cd "$target_restore_dir" && docker compose up -d) || \
         log "ERROR: Failed to start containers."
     fi
 
     log "Cleaning up..."
     rm -rf "$temp_dir"
+
+    if [ "$delete_backup" = true ]; then
+        log "Deleting backup file: $backup_file"
+        rm -f "$backup_file"
+    fi
 
     log "Restore completed successfully!"
 }
@@ -386,7 +404,7 @@ case "$action" in
                 create_backup "$dir"
             else
                 log "No docker-compose file found directly in $dir. Checking direct subdirectories..."
-                local found_subdirs=false
+                found_subdirs=false
                 # Using find to handle hidden directories or spaces carefully, or a simple loop if files are standard
                 for subdir in "$dir"/*; do
                     if [ -d "$subdir" ] && { [ -f "$subdir/docker-compose.yaml" ] || [ -f "$subdir/docker-compose.yml" ]; }; then
@@ -410,7 +428,7 @@ case "$action" in
             fi
 
             # Check if this directory contains a backup file or has subdirectories with backup files
-            local has_backups=false
+            has_backups=false
             if [ -n "$(find "$dir" -maxdepth 1 -name "*_backup_*.tar.gz" 2>/dev/null)" ]; then
                 has_backups=true
             fi
@@ -419,7 +437,7 @@ case "$action" in
                 restore_backup "$dir"
             else
                 log "No backup files found directly in $dir. Checking direct subdirectories..."
-                local found_subdirs=false
+                found_subdirs=false
                 for subdir in "$dir"/*; do
                     if [ -d "$subdir" ] && [ -n "$(find "$subdir" -maxdepth 1 -name "*_backup_*.tar.gz" 2>/dev/null)" ]; then
                         log "Found backups in subdirectory: $subdir"
