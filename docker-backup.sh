@@ -54,6 +54,8 @@ function create_backup {
         log "ERROR: Directory $app_dir does not exist."
         exit 1
     fi
+    
+    app_dir=$(cd "$app_dir" && pwd)
 
     local compose_file=""
     if [ -f "$app_dir/docker-compose.yaml" ]; then
@@ -203,6 +205,8 @@ function restore_backup {
         log "ERROR: Directory $app_dir does not exist."
         exit 1
     fi
+    
+    app_dir=$(cd "$app_dir" && pwd)
 
     local backup_files
     IFS=$'\n' read -d '' -r -a backup_files < <(find "$app_dir" -maxdepth 1 -name "*_backup_*.tar.gz" | sort -r && printf '\0')
